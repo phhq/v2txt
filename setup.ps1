@@ -4,7 +4,7 @@
     VoiceMode MCP Setup Script for Windows
 .DESCRIPTION
     Installs all dependencies needed for voice-to-text interaction
-    with Claude Desktop via the VoiceMode MCP server on Windows.
+    with Claude via the VoiceMode MCP server on Windows.
 
     This script:
     - Installs the uv package manager
@@ -12,6 +12,7 @@
       (prebuilt Windows wheels, no C++ Build Tools needed)
     - Configures Claude Desktop MCP settings at both standard and MSIX
       config locations (workaround for the known dual-config bug)
+    - Registers with Claude Code for CLI and web session support
 .PARAMETER OpenAIApiKey
     Optional OpenAI API key for speech-to-text / text-to-speech services.
 .PARAMETER Force
@@ -35,7 +36,7 @@ Write-Host "=== VoiceMode MCP Setup for Windows ===" -ForegroundColor Cyan
 Write-Host ""
 
 # --- 1. Install uv package manager ---
-Write-Host "[1/3] Checking for uv package manager..." -ForegroundColor Yellow
+Write-Host "[1/4] Checking for uv package manager..." -ForegroundColor Yellow
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 
@@ -60,7 +61,7 @@ try {
 } catch {}
 
 # --- 2. Create venv and install voice-mode ---
-Write-Host "[2/3] Installing voice-mode..." -ForegroundColor Yellow
+Write-Host "[2/4] Installing voice-mode..." -ForegroundColor Yellow
 
 if (-not (Test-Path $pythonExe) -or $Force) {
     Write-Host "  Creating virtual environment at $voicemodeDir..." -ForegroundColor Gray
@@ -88,7 +89,7 @@ if (-not (Test-Path $voicemodeExe)) {
 Write-Host "  voice-mode installed successfully." -ForegroundColor Green
 
 # --- 3. Configure Claude Desktop MCP ---
-Write-Host "[3/3] Configuring Claude Desktop..." -ForegroundColor Yellow
+Write-Host "[3/4] Configuring Claude Desktop..." -ForegroundColor Yellow
 
 # Build the voicemode MCP server entry
 $voicemodeEntry = [ordered]@{
@@ -197,15 +198,41 @@ if ($configuredCount -eq 0) {
     Write-Host "  Created: $standardPath" -ForegroundColor Green
 }
 
+# --- 4. Register with Claude Code (CLI & Web) ---
+Write-Host "[4/4] Configuring Claude Code..." -ForegroundColor Yellow
+
+$claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+if ($claudeCmd) {
+    try {
+        claude mcp add --scope user voicemode -- $voicemodeExe 2>&1 | Out-Null
+        Write-Host "  Registered voicemode with Claude Code (CLI & web sessions)." -ForegroundColor Green
+    } catch {
+        Write-Host "  Warning: could not register with Claude Code: $_" -ForegroundColor DarkYellow
+        Write-Host "  You can manually run:" -ForegroundColor Gray
+        Write-Host "    claude mcp add --scope user voicemode -- $voicemodeExe" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "  Claude Code CLI not found (optional)." -ForegroundColor Gray
+    Write-Host "  To enable voice in CLI & web sessions, install Claude Code and run:" -ForegroundColor Gray
+    Write-Host "    claude mcp add --scope user voicemode -- $voicemodeExe" -ForegroundColor Gray
+}
+
 # --- Done ---
 Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Installed to: $voicemodeDir" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  1. Restart Claude Desktop" -ForegroundColor White
-Write-Host "  2. Ask Claude to 'start a voice conversation'" -ForegroundColor White
+Write-Host "Voice mode is now available in:" -ForegroundColor Yellow
+Write-Host "  - Claude Desktop (restart required)" -ForegroundColor White
+if ($claudeCmd) {
+    Write-Host "  - Claude Code CLI (claude command)" -ForegroundColor White
+    Write-Host "  - Claude Code Web (claude.ai/code)" -ForegroundColor White
+} else {
+    Write-Host "  - Claude Code CLI/Web (requires 'claude' CLI — see above)" -ForegroundColor DarkGray
+}
+Write-Host ""
+Write-Host "Ask Claude to 'start a voice conversation' in any session." -ForegroundColor White
 Write-Host ""
 Write-Host "If the config resets after a Claude Desktop update, re-run:" -ForegroundColor Yellow
 Write-Host "  powershell -ExecutionPolicy Bypass -File setup.ps1" -ForegroundColor White

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# VoiceMode MCP Setup Script for Claude Code
+# VoiceMode MCP Setup Script
 # This script installs all dependencies needed for voice-to-text
-# interaction with Claude Code via the VoiceMode MCP server.
+# interaction with Claude via the VoiceMode MCP server.
+# Configures both Claude Code (CLI & web) and Claude Desktop.
 
 echo "=== VoiceMode MCP Setup ==="
 echo ""
@@ -87,27 +88,115 @@ echo ""
 echo "Running VoiceMode installer..."
 uvx voice-mode-install
 
-# Register with Claude Code
+# Register with Claude Code (CLI & Web)
 echo ""
 echo "Registering VoiceMode MCP server with Claude Code..."
 
-if [[ "$OS" == "Darwin"* ]]; then
-  # macOS needs webrtcvad with pinned setuptools for voice activity detection
-  claude mcp add --scope user voicemode -- \
-    uvx --refresh --with webrtcvad --with "setuptools<71" voice-mode
+if command -v claude &> /dev/null; then
+  if [[ "$OS" == "Darwin"* ]]; then
+    # macOS needs webrtcvad with pinned setuptools for voice activity detection
+    claude mcp add --scope user voicemode -- \
+      uvx --refresh --with webrtcvad --with "setuptools<71" voice-mode
+  else
+    claude mcp add --scope user voicemode -- \
+      uvx --refresh voice-mode
+  fi
+  echo "  Registered voicemode with Claude Code (CLI & web sessions)."
 else
-  claude mcp add --scope user voicemode -- \
-    uvx --refresh voice-mode
+  echo "  Claude Code CLI not found (optional)."
+  echo "  To enable voice in CLI & web sessions, install Claude Code and run:"
+  echo "    claude mcp add --scope user voicemode -- uvx --refresh voice-mode"
+fi
+
+# Configure Claude Desktop (if applicable)
+echo ""
+echo "Configuring Claude Desktop..."
+
+configure_desktop_config() {
+  local config_path="$1"
+  local config_dir
+  config_dir="$(dirname "$config_path")"
+
+  mkdir -p "$config_dir"
+
+  # Build the voicemode MCP entry based on OS
+  local vm_command="uvx"
+  local vm_args
+  if [[ "$OS" == "Darwin"* ]]; then
+    vm_args='["--refresh", "--with", "webrtcvad", "--with", "setuptools<71", "voice-mode"]'
+  else
+    vm_args='["--refresh", "voice-mode"]'
+  fi
+
+  if [ -f "$config_path" ]; then
+    # Merge into existing config, preserving other settings and MCP servers
+    if command -v python3 &> /dev/null; then
+      python3 -c "
+import json, sys
+try:
+    with open('$config_path', 'r') as f:
+        config = json.load(f)
+except (json.JSONDecodeError, FileNotFoundError):
+    config = {}
+servers = config.get('mcpServers', {})
+servers['voicemode'] = {'command': '$vm_command', 'args': $vm_args}
+config['mcpServers'] = servers
+with open('$config_path', 'w') as f:
+    json.dump(config, f, indent=2)
+"
+      echo "  Configured: $config_path"
+    else
+      echo "  Warning: python3 not found, cannot merge config at $config_path"
+    fi
+  else
+    # Create fresh config
+    cat > "$config_path" << JSONEOF
+{
+  "mcpServers": {
+    "voicemode": {
+      "command": "$vm_command",
+      "args": $vm_args
+    }
+  }
+}
+JSONEOF
+    echo "  Created: $config_path"
+  fi
+}
+
+desktop_configured=false
+
+if [[ "$OS" == "Darwin"* ]]; then
+  config_path="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+  configure_desktop_config "$config_path"
+  desktop_configured=true
+elif [[ "$OS" == "Linux"* ]]; then
+  # Linux: check XDG config and ~/.config paths for Claude Desktop
+  xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
+  config_path="$xdg_config/Claude/claude_desktop_config.json"
+  if [ -d "$xdg_config/Claude" ] || [ -f "$config_path" ]; then
+    configure_desktop_config "$config_path"
+    desktop_configured=true
+  else
+    echo "  Claude Desktop config directory not found (not installed or not applicable)."
+  fi
 fi
 
 echo ""
 echo "=== Setup Complete ==="
 echo ""
-echo "To start a voice conversation, run:"
-echo "  claude"
+
+echo "Voice mode is now available in:"
+if command -v claude &> /dev/null; then
+  echo "  - Claude Code CLI (claude command)"
+  echo "  - Claude Code Web (claude.ai/code)"
+fi
+if [ "$desktop_configured" = true ]; then
+  echo "  - Claude Desktop (restart required)"
+fi
 echo ""
-echo "Then ask Claude to 'start a voice conversation' or use the converse tool."
+echo "Ask Claude to 'start a voice conversation' in any session."
 echo ""
-echo "NOTE: Make sure your terminal app has microphone permissions."
+echo "NOTE: Make sure your app has microphone permissions."
 echo "  - macOS: System Settings > Privacy & Security > Microphone > enable your terminal"
 echo "  - Linux: Ensure PulseAudio is running (pulseaudio --start)"
