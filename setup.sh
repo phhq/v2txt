@@ -50,9 +50,23 @@ case "$OS" in
     echo "Installing system dependencies via Homebrew..."
     brew install ffmpeg portaudio
     ;;
+  MINGW*|MSYS*|CYGWIN*)
+    echo "Detected Windows (Git Bash / MSYS2)"
+    echo ""
+    echo "Native Windows requires a different setup process."
+    echo "Please run the PowerShell script instead:"
+    echo ""
+    echo "  powershell -ExecutionPolicy Bypass -File setup.ps1"
+    echo ""
+    echo "Or use WSL2 for the best experience:"
+    echo "  wsl --install"
+    echo "  # Then run this script from within WSL"
+    exit 1
+    ;;
   *)
     echo "Unsupported OS: $OS"
-    echo "On Windows, use WSL and run this script from there."
+    echo "On Windows, use WSL and run this script from there,"
+    echo "or use setup.ps1 for native Windows support."
     exit 1
     ;;
 esac
