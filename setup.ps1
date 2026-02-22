@@ -36,7 +36,7 @@ Write-Host "=== VoiceMode MCP Setup for Windows ===" -ForegroundColor Cyan
 Write-Host ""
 
 # --- 1. Install uv package manager ---
-Write-Host "[1/4] Checking for uv package manager..." -ForegroundColor Yellow
+Write-Host "[1/5] Checking for uv package manager..." -ForegroundColor Yellow
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 
@@ -61,7 +61,7 @@ try {
 } catch {}
 
 # --- 2. Create venv and install voice-mode ---
-Write-Host "[2/4] Installing voice-mode..." -ForegroundColor Yellow
+Write-Host "[2/5] Installing voice-mode..." -ForegroundColor Yellow
 
 if (-not (Test-Path $pythonExe) -or $Force) {
     Write-Host "  Creating virtual environment at $voicemodeDir..." -ForegroundColor Gray
@@ -89,7 +89,7 @@ if (-not (Test-Path $voicemodeExe)) {
 Write-Host "  voice-mode installed successfully." -ForegroundColor Green
 
 # --- 3. Configure Claude Desktop MCP ---
-Write-Host "[3/4] Configuring Claude Desktop..." -ForegroundColor Yellow
+Write-Host "[3/5] Configuring Claude Desktop..." -ForegroundColor Yellow
 
 # Build the voicemode MCP server entry
 $voicemodeEntry = [ordered]@{
@@ -199,7 +199,7 @@ if ($configuredCount -eq 0) {
 }
 
 # --- 4. Register with Claude Code (CLI & Web) ---
-Write-Host "[4/4] Configuring Claude Code..." -ForegroundColor Yellow
+Write-Host "[4/5] Configuring Claude Code..." -ForegroundColor Yellow
 
 $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
 if ($claudeCmd) {
@@ -215,6 +215,50 @@ if ($claudeCmd) {
     Write-Host "  Claude Code CLI not found (optional)." -ForegroundColor Gray
     Write-Host "  To enable voice in CLI & web sessions, install Claude Code and run:" -ForegroundColor Gray
     Write-Host "    claude mcp add --scope user voicemode -- $voicemodeExe" -ForegroundColor Gray
+}
+
+# --- 5. Add global Claude Code instructions for voice mode ---
+Write-Host "[5/5] Adding voice mode instructions to CLAUDE.md..." -ForegroundColor Yellow
+
+$claudeMdDir = Join-Path $env:USERPROFILE ".claude"
+$claudeMdPath = Join-Path $claudeMdDir "CLAUDE.md"
+
+$voicemodeBlock = @"
+
+# VoiceMode
+
+A voicemode MCP server is installed. When the user asks to "start a voice
+conversation", "use voice mode", "talk to me", or makes any similar voice
+interaction request:
+
+1. Do NOT build or implement a voice feature from scratch.
+2. Use the voicemode MCP ``service`` tool to check and start required services
+   (whisper for speech-to-text, kokoro for text-to-speech).
+3. Follow the voicemode MCP ``converse`` prompt for conducting the voice
+   conversation.
+"@
+
+if (-not (Test-Path $claudeMdDir)) {
+    New-Item -ItemType Directory -Path $claudeMdDir -Force | Out-Null
+}
+
+if (Test-Path $claudeMdPath) {
+    $existing = [System.IO.File]::ReadAllText($claudeMdPath)
+    if ($existing -match "# VoiceMode") {
+        # Replace existing VoiceMode section
+        $pattern = '(?s)\r?\n# VoiceMode\r?\n.*?(?=\r?\n# |\z)'
+        $replaced = [regex]::Replace($existing, $pattern, $voicemodeBlock)
+        [System.IO.File]::WriteAllText($claudeMdPath, $replaced, $utf8NoBom)
+        Write-Host "  Updated existing VoiceMode section in $claudeMdPath" -ForegroundColor Green
+    } else {
+        # Append VoiceMode section
+        $updated = $existing.TrimEnd() + "`n" + $voicemodeBlock + "`n"
+        [System.IO.File]::WriteAllText($claudeMdPath, $updated, $utf8NoBom)
+        Write-Host "  Appended VoiceMode section to $claudeMdPath" -ForegroundColor Green
+    }
+} else {
+    [System.IO.File]::WriteAllText($claudeMdPath, $voicemodeBlock.TrimStart() + "`n", $utf8NoBom)
+    Write-Host "  Created $claudeMdPath" -ForegroundColor Green
 }
 
 # --- Done ---

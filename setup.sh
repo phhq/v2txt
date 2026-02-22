@@ -182,6 +182,51 @@ elif [[ "$OS" == "Linux"* ]]; then
   fi
 fi
 
+# Add global Claude Code instructions for voice mode
+echo ""
+echo "Adding voice mode instructions to CLAUDE.md..."
+
+claude_md_dir="$HOME/.claude"
+claude_md_path="$claude_md_dir/CLAUDE.md"
+
+voicemode_block='
+# VoiceMode
+
+A voicemode MCP server is installed. When the user asks to "start a voice
+conversation", "use voice mode", "talk to me", or makes any similar voice
+interaction request:
+
+1. Do NOT build or implement a voice feature from scratch.
+2. Use the voicemode MCP `service` tool to check and start required services
+   (whisper for speech-to-text, kokoro for text-to-speech).
+3. Follow the voicemode MCP `converse` prompt for conducting the voice
+   conversation.'
+
+mkdir -p "$claude_md_dir"
+
+if [ -f "$claude_md_path" ]; then
+  if grep -q "# VoiceMode" "$claude_md_path"; then
+    # Replace existing VoiceMode section using python for reliable multiline replace
+    python3 -c "
+import re
+with open('$claude_md_path', 'r') as f:
+    content = f.read()
+block = '''$voicemode_block'''
+content = re.sub(r'\n# VoiceMode\n.*?(?=\n# |\Z)', block, content, flags=re.DOTALL)
+with open('$claude_md_path', 'w') as f:
+    f.write(content)
+"
+    echo "  Updated existing VoiceMode section in $claude_md_path"
+  else
+    # Append VoiceMode section
+    printf '%s\n' "$voicemode_block" >> "$claude_md_path"
+    echo "  Appended VoiceMode section to $claude_md_path"
+  fi
+else
+  printf '%s\n' "$voicemode_block" | sed '1{/^$/d}' > "$claude_md_path"
+  echo "  Created $claude_md_path"
+fi
+
 echo ""
 echo "=== Setup Complete ==="
 echo ""
