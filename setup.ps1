@@ -90,15 +90,13 @@ Write-Host "  voice-mode installed successfully." -ForegroundColor Green
 # --- 3. Configure Claude Desktop MCP ---
 Write-Host "[3/3] Configuring Claude Desktop..." -ForegroundColor Yellow
 
-# Build the MCP server config pointing to the venv executable
-$mcpServerEntry = @{
+# Build the voicemode MCP server entry
+$voicemodeEntry = [ordered]@{
     command = $voicemodeExe
     args    = @()
 }
-
-# Add OpenAI API key if provided
 if ($OpenAIApiKey) {
-    $mcpServerEntry.env = @{
+    $voicemodeEntry["env"] = [ordered]@{
         OPENAI_API_KEY = $OpenAIApiKey
     }
 }
@@ -122,6 +120,10 @@ foreach ($dir in $msixDirs) {
     }
 }
 
+# UTF-8 without BOM — critical because Claude Desktop's JSON parser rejects the
+# byte-order mark that PowerShell 5.1's "Set-Content -Encoding UTF8" writes.
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
 $configuredCount = 0
 foreach ($configPath in $configPaths) {
     $configDir = Split-Path $configPath -Parent
@@ -130,31 +132,50 @@ foreach ($configPath in $configPaths) {
         New-Item -ItemType Directory -Path $configDir -Force | Out-Null
     }
 
-    # Read existing config or start fresh
-    $existingConfig = @{}
+    # Read existing config, preserving other settings (e.g. preferences) and MCP servers.
+    # We avoid -AsHashtable because it is not available on PowerShell 5.1.
+    $existingConfig = $null
     if (Test-Path $configPath) {
         try {
-            $content = Get-Content $configPath -Raw -ErrorAction SilentlyContinue
-            if ($content) {
-                $existingConfig = $content | ConvertFrom-Json -AsHashtable -ErrorAction SilentlyContinue
-                if (-not $existingConfig) {
-                    $existingConfig = @{}
-                }
+            $raw = [System.IO.File]::ReadAllText($configPath)
+            # Strip BOM if present from a prior write
+            $raw = $raw.TrimStart([char]0xFEFF)
+            if ($raw.Trim()) {
+                $existingConfig = $raw | ConvertFrom-Json -ErrorAction Stop
             }
         } catch {
-            $existingConfig = @{}
+            Write-Host "  Warning: could not parse existing config, creating fresh." -ForegroundColor DarkYellow
         }
     }
 
-    # Merge: preserve existing settings and other MCP servers
-    if (-not $existingConfig.ContainsKey("mcpServers")) {
-        $existingConfig["mcpServers"] = @{}
+    # Build merged config: keep every existing top-level key, update mcpServers
+    $merged = [ordered]@{}
+
+    if ($existingConfig) {
+        foreach ($prop in $existingConfig.PSObject.Properties) {
+            if ($prop.Name -ne "mcpServers") {
+                $merged[$prop.Name] = $prop.Value
+            }
+        }
     }
-    $existingConfig["mcpServers"]["voicemode"] = $mcpServerEntry
+
+    # Preserve other MCP servers that aren't voicemode
+    $mcpServers = [ordered]@{}
+    if ($existingConfig -and
+        ($existingConfig | Get-Member -Name mcpServers -MemberType NoteProperty) -and
+        $existingConfig.mcpServers) {
+        foreach ($prop in $existingConfig.mcpServers.PSObject.Properties) {
+            if ($prop.Name -ne "voicemode") {
+                $mcpServers[$prop.Name] = $prop.Value
+            }
+        }
+    }
+    $mcpServers["voicemode"] = $voicemodeEntry
+    $merged["mcpServers"] = $mcpServers
 
     try {
-        $json = $existingConfig | ConvertTo-Json -Depth 10
-        Set-Content -Path $configPath -Value $json -Encoding UTF8
+        $json = [PSCustomObject]$merged | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($configPath, $json, $utf8NoBom)
         Write-Host "  Configured: $configPath" -ForegroundColor Green
         $configuredCount++
     } catch {
@@ -169,8 +190,10 @@ if ($configuredCount -eq 0) {
     if (-not (Test-Path $defaultDir)) {
         New-Item -ItemType Directory -Path $defaultDir -Force | Out-Null
     }
-    $json = @{ mcpServers = @{ voicemode = $mcpServerEntry } } | ConvertTo-Json -Depth 10
-    Set-Content -Path $standardPath -Value $json -Encoding UTF8
+    $json = [PSCustomObject][ordered]@{
+        mcpServers = [ordered]@{ voicemode = $voicemodeEntry }
+    } | ConvertTo-Json -Depth 10
+    [System.IO.File]::WriteAllText($standardPath, $json, $utf8NoBom)
     Write-Host "  Created: $standardPath" -ForegroundColor Green
 }
 
