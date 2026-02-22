@@ -62,14 +62,9 @@ try {
 # --- 2. Create venv and install voice-mode ---
 Write-Host "[2/3] Installing voice-mode..." -ForegroundColor Yellow
 
-if ((Test-Path $voicemodeDir) -and $Force) {
-    Write-Host "  Removing existing installation (--Force)..." -ForegroundColor Gray
-    Remove-Item -Recurse -Force $voicemodeDir
-}
-
-if (-not (Test-Path $pythonExe)) {
+if (-not (Test-Path $pythonExe) -or $Force) {
     Write-Host "  Creating virtual environment at $voicemodeDir..." -ForegroundColor Gray
-    uv venv $voicemodeDir --python 3.11
+    uv venv $voicemodeDir --python 3.11 --clear
 }
 
 # Create override file to skip the original simpleaudio package.
