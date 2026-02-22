@@ -12,23 +12,22 @@ Voice to Text for Claude via VoiceMode MCP Server.
 
 ### Windows (Native)
 
-Open PowerShell as Administrator and run:
+Open PowerShell and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-**What the script does:**
-
-1. Checks for / installs **Microsoft Visual C++ Build Tools** (required to compile `simpleaudio`)
-2. Installs the **uv** package manager
-3. Configures **Claude Desktop** MCP server settings
+The script creates a virtual environment at `~\.voicemode` with `voice-mode` and
+`simpleaudio-patched` (prebuilt Windows wheels — **no C++ Build Tools needed**).
+It then configures Claude Desktop's MCP server settings, writing to both config
+file locations to work around the known MSIX dual-config bug.
 
 After setup, restart Claude Desktop and ask Claude to "start a voice conversation".
 
-### Windows (WSL2 - Recommended)
+### Windows (WSL2)
 
-WSL2 provides the most reliable experience on Windows:
+WSL2 is also supported and avoids native Windows audio quirks:
 
 ```bash
 wsl --install           # if WSL not installed yet
@@ -38,29 +37,18 @@ wsl --install           # if WSL not installed yet
 
 ## Troubleshooting
 
-### "simpleaudio failed to build" on Windows
-
-The `voice-mode` package depends on `simpleaudio`, which must be compiled from C source on Python 3.10+. This requires Microsoft Visual C++ Build Tools.
-
-**Fix:** Run `setup.ps1` which handles this automatically, or install manually:
-
-1. Run: `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
-2. Restart your PC
-3. Run: `uv cache clean`
-4. Restart Claude Desktop
-
 ### Claude Desktop config keeps resetting
 
-Claude Desktop (MSIX install) has a known bug where two config files exist and the app may read the wrong one. The `setup.ps1` script writes to **both** locations to work around this.
-
-If the config resets after an update, re-run `setup.ps1`.
+Claude Desktop (MSIX install) has a known bug where two config files exist
+and the app reads the wrong one. The `setup.ps1` script writes to **both**
+locations. If the config resets after an update, re-run `setup.ps1`.
 
 ### MCP server shows as disconnected
 
 Check the logs at `%APPDATA%\Claude\logs\` for error details. Common causes:
 
-- `simpleaudio` build failure (see above)
 - Missing OpenAI API key: re-run `setup.ps1 -OpenAIApiKey "sk-your-key"`
+- Stale install: re-run `setup.ps1 -Force` to reinstall from scratch
 - Network issues preventing package download
 
 ## Requirements
@@ -68,4 +56,3 @@ Check the logs at `%APPDATA%\Claude\logs\` for error details. Common causes:
 - Python 3.10+ (installed automatically by uv if needed)
 - OpenAI API key (for speech-to-text and text-to-speech)
 - Microphone access
-- **Windows only:** Microsoft Visual C++ Build Tools
